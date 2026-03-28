@@ -3,6 +3,7 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import connectDB from "./config/db.js";
 import { clerkMiddleware } from "@clerk/express";
+import { clerkWebhook } from "./controllers/webhooks.js";
 
 const app = express();
 
@@ -13,6 +14,9 @@ await connectDB();
 app.use(cors());
 app.use(express.json());
 app.use(clerkMiddleware());
+
+// clerk routes
+app.post("api/clerk", express.raw({ type: "application/json" }), clerkWebhook);
 
 const port = process.env.PORT || 3000;
 
