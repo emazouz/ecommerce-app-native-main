@@ -60,9 +60,7 @@ export default function Profile() {
           transition={150}
           cachePolicy="memory-disk"
         />
-        <Text className="text-xl font-bold text-primary mt-3">
-          {user.username}
-        </Text>
+        <Text className="text-xl font-bold text-primary mt-3">{user.firstName} {user.lastName}</Text>
         <Text className="text-sm text-secondary mt-1">
           {user.emailAddresses[0].emailAddress}
         </Text>

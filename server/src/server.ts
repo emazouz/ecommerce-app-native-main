@@ -16,7 +16,7 @@ app.use(express.json());
 app.use(clerkMiddleware());
 
 // clerk routes
-app.post("api/clerk", express.raw({ type: "application/json" }), clerkWebhook);
+app.post("/api/clerk", express.raw({ type: "application/json" }), clerkWebhook);
 
 const port = process.env.PORT || 3000;
 

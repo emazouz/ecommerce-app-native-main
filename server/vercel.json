@@ -1,14 +1,18 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "functions": {
-    "src/server.ts": {
-      "includeFiles": "dist/**"
-    }
-  },
-  "rewrites": [
+  "version": 2,
+  "builds": [
     {
-      "source": "/(.*)",
-      "destination": "/src/server.ts"
+      "src": "/src/server.ts",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["dist/**"]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/src/server.ts"
     }
   ]
 }
