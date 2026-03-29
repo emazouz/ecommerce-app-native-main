@@ -1,26 +1,58 @@
-import { View, Text, Pressable } from "react-native";
-import React from "react";
+import { View, Text, Pressable, ActivityIndicator } from "react-native";
+import React, { useCallback, useMemo } from "react";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import Header from "../components/main-header";
 import { PROFILE_MENU } from "@/assets/constants";
-import { useUser, useClerk } from "@clerk/expo";
+import { useUser, useAuth } from "@clerk/expo";
 
 const AVATAR_SIZE = 100;
 
 export default function Profile() {
-  const { user } = useUser();
-  const { signOut } = useClerk();
+  const { user, isLoaded, isSignedIn } = useUser();
+  const { signOut } = useAuth();
   const router = useRouter();
 
-  const handleLogout = async () => {
-    await signOut();
-    router.push("/sign-in" as any);
-  };
+  // Safely derive display values from the Clerk user object
+  const displayName = useMemo(() => {
+    if (!user) return "";
+    const first = user.firstName ?? "";
+    const last = user.lastName ?? "";
+    const full = `${first} ${last}`.trim();
+    // Fall back to username or email if name fields are empty
+    return full || user.username || user.primaryEmailAddress?.emailAddress || "User";
+  }, [user]);
 
-  if (!user) {
+  const displayEmail = useMemo(() => {
+    if (!user) return "";
+    // primaryEmailAddress is the safest accessor — avoids indexing into an empty array
+    return user.primaryEmailAddress?.emailAddress ?? "";
+  }, [user]);
+
+  const avatarUrl = user?.imageUrl;
+  const isAdmin = (user?.publicMetadata as { role?: string })?.role === "admin";
+
+  const handleLogout = useCallback(async () => {
+    await signOut();
+    router.replace("/sign-in" as any);
+  }, [signOut, router]);
+
+  // ── State 1: Clerk is still loading ──────────────────────────────
+  if (!isLoaded) {
+    return (
+      <SafeAreaView className="flex-1 bg-surface" edges={["top"]}>
+        <Header title="Profile" />
+        <View className="flex-1 justify-center items-center">
+          <ActivityIndicator size="large" color="#555" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ── State 2: Not signed in ───────────────────────────────────────
+  if (!isSignedIn) {
     return (
       <SafeAreaView className="flex-1 bg-surface" edges={["top"]}>
         <Header title="Profile" />
@@ -43,29 +75,49 @@ export default function Profile() {
     );
   }
 
+  // ── State 3: Signed in ───────────────────────────────────────────
   return (
     <SafeAreaView className="flex-1 bg-surface" edges={["top"]}>
       <Header title="Profile" />
 
       {/* Avatar & Info */}
       <View className="items-center mt-6 mb-4">
-        <Image
-          source={{ uri: user.imageUrl }}
-          style={{
-            width: AVATAR_SIZE,
-            height: AVATAR_SIZE,
-            borderRadius: AVATAR_SIZE / 2,
-          }}
-          contentFit="cover"
-          transition={150}
-          cachePolicy="memory-disk"
-        />
-        <Text className="text-xl font-bold text-primary mt-3">{user.firstName} {user.lastName}</Text>
-        <Text className="text-sm text-secondary mt-1">
-          {user.emailAddresses[0].emailAddress}
+        {avatarUrl ? (
+          <Image
+            source={{ uri: avatarUrl }}
+            style={{
+              width: AVATAR_SIZE,
+              height: AVATAR_SIZE,
+              borderRadius: AVATAR_SIZE / 2,
+            }}
+            contentFit="cover"
+            transition={150}
+            cachePolicy="memory-disk"
+          />
+        ) : (
+          <View
+            style={{
+              width: AVATAR_SIZE,
+              height: AVATAR_SIZE,
+              borderRadius: AVATAR_SIZE / 2,
+              backgroundColor: "#e5e7eb",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <Ionicons name="person" size={48} color="#9ca3af" />
+          </View>
+        )}
+
+        <Text className="text-xl font-bold text-primary mt-3">
+          {displayName}
         </Text>
 
-        {user.publicMetadata.role === "admin" && (
+        {displayEmail !== "" && (
+          <Text className="text-sm text-secondary mt-1">{displayEmail}</Text>
+        )}
+
+        {isAdmin && (
           <Pressable
             onPress={() => router.push("/admin" as any)}
             className="bg-primary px-8 py-3 rounded-full mt-4"
@@ -107,3 +159,4 @@ export default function Profile() {
     </SafeAreaView>
   );
 }
+
