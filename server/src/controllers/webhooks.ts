@@ -28,7 +28,7 @@ export const clerkWebhook = async (req: Request, res: Response) => {
 
       // إلا كان user موجود → update
       if (user) {
-        await User.updateOne({ clerkId: evt.data.id }, userData);
+        await User.findByIdAndUpdate({ clerkId: evt.data.id }, userData);
       }
       // إلا ما كانش → create
       else {
