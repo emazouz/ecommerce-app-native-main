@@ -5,7 +5,6 @@ export const makeAdmin = async () => {
   try {
     const email = process.env.ADMIN_EMAIL;
     if (!email) {
-      console.log("Please provide an email");
       return;
     }
 
@@ -16,7 +15,7 @@ export const makeAdmin = async () => {
 
     if (user) {
       await clerkClient.users.updateUser(user.clerkId, {
-        publicMetadata: {
+        unsafeMetadata: {
           role: "admin",
         },
       });

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   Text,
   Pressable,
@@ -6,12 +6,16 @@ import {
   FlatList,
   Modal,
   RefreshControl,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { dummyOrders, dummyUser } from "@/assets/assets";
-import { COLORS, getStatusColor } from "@/assets/constants";
+import { COLORS, getStatusColor } from "@/constants";
 import Header from "../components/main-header";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useAuth } from "@clerk/expo";
+import Toast from "react-native-toast-message";
+import api from "@/constants/api";
+import { useRouter } from "expo-router";
 
 const STATUSES = ["placed", "processing", "shipped", "delivered", "cancelled"];
 
@@ -24,21 +28,58 @@ const STATUS_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
 };
 
 export default function AdminOrders() {
-  const initialOrders = useMemo(
-    () =>
-      dummyOrders.map((order: any) => ({ ...order, user: dummyUser })),
-    [],
-  );
+  const { getToken } = useAuth();
+  const router = useRouter();
 
-  const [orders, setOrders] = useState(initialOrders);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [statusModalVisible, setStatusModalVisible] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
 
-  const onRefresh = useCallback(() => {
+  const fetchOrders = useCallback(async () => {
+    try {
+      const token = await getToken();
+      if (!token) {
+        router.replace("/sign-in");
+        return;
+      }
+      const response = await api.get("/orders/admin", {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { limit: 999 }, // Fetch all orders on the dashboard
+      });
+
+      if (!response.data.success) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Failed to fetch orders",
+        });
+        return;
+      }
+
+      setOrders(response.data.data || []);
+    } catch (error) {
+      console.error("Failed to fetch orders:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to fetch orders",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [getToken, router]);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
+
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 500);
-  }, []);
+    await fetchOrders();
+    setRefreshing(false);
+  }, [fetchOrders]);
 
   const openStatusModal = useCallback((order: any) => {
     setSelectedOrder(order);
@@ -46,18 +87,49 @@ export default function AdminOrders() {
   }, []);
 
   const updateStatus = useCallback(
-    (newStatus: string) => {
+    async (newStatus: string) => {
       if (!selectedOrder) return;
+
+      const previousOrders = [...orders];
+      // Optimistic update
       setOrders((prev) =>
         prev.map((o: any) =>
-          o._id === selectedOrder._id
-            ? { ...o, orderStatus: newStatus }
-            : o,
+          o._id === selectedOrder._id ? { ...o, orderStatus: newStatus } : o,
         ),
       );
       setStatusModalVisible(false);
+
+      try {
+        const token = await getToken();
+        if (!token) throw new Error("No token");
+
+        const response = await api.put(
+          `/orders/admin/${selectedOrder._id}/status`,
+          { orderStatus: newStatus },
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+
+        if (!response.data.success) {
+          throw new Error(response.data.message || "Update failed");
+        }
+
+        Toast.show({
+          type: "success",
+          text1: "Status Updated",
+          text2: `Order moved to ${newStatus}`,
+        });
+      } catch (error) {
+        console.error("Update failed:", error);
+        // Revert
+        setOrders(previousOrders);
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Failed to update status",
+        });
+      }
     },
-    [selectedOrder],
+    [selectedOrder, orders, getToken],
   );
 
   const renderOrder = useCallback(
@@ -112,16 +184,13 @@ export default function AdminOrders() {
           <View className="mb-3">
             <SectionLabel text="Items" />
             {order.items.map((item: any) => (
-              <View
-                key={item._id}
-                className="flex-row justify-between mt-1.5"
-              >
+              <View key={item._id} className="flex-row justify-between mt-1.5">
                 <Text className="text-xs text-secondary flex-1 mr-2">
                   {item.quantity}× {item.product?.name ?? item.name}
                   {item.size ? ` (${item.size})` : ""}
                 </Text>
                 <Text className="text-xs font-bold text-primary">
-                  ${item.price.toFixed(2)}
+                  ${Number(item.price || 0).toFixed(2)}
                 </Text>
               </View>
             ))}
@@ -130,7 +199,7 @@ export default function AdminOrders() {
           {/* Footer: Total + Status */}
           <View className="flex-row justify-between items-center pt-3 border-t border-gray-100">
             <Text className="text-base font-bold text-primary">
-              ${order.totalAmount.toFixed(2)}
+              ${Number(order.totalAmount || 0).toFixed(2)}
             </Text>
             <Pressable
               onPress={() => openStatusModal(order)}
@@ -150,21 +219,27 @@ export default function AdminOrders() {
 
   return (
     <SafeAreaView className="flex-1 bg-surface" edges={["top"]}>
-              <Header title="Manage Orders" showBack />
+      <Header title="Manage Orders" showBack />
 
       <FlatList
         data={orders}
         keyExtractor={(item: any) => item._id}
         renderItem={renderOrder}
-        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 32, flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <View className="flex-1 justify-center items-center mt-20">
-            <Ionicons name="receipt-outline" size={48} color="#ccc" />
-            <Text className="text-secondary mt-3 text-base">
-              No orders found
-            </Text>
-          </View>
+          loading ? (
+            <View className="flex-1 justify-center items-center mt-20">
+              <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+          ) : (
+            <View className="flex-1 justify-center items-center mt-20">
+              <Ionicons name="receipt-outline" size={48} color="#ccc" />
+              <Text className="text-secondary mt-3 text-base">
+                No orders found
+              </Text>
+            </View>
+          )
         }
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -205,7 +280,9 @@ export default function AdminOrders() {
                 key={status}
                 onPress={() => updateStatus(status)}
                 className={`flex-row items-center p-4 rounded-xl mb-2 ${
-                  active ? "bg-primary/5 border border-primary/20" : "bg-surface"
+                  active
+                    ? "bg-primary/5 border border-primary/20"
+                    : "bg-surface"
                 }`}
               >
                 <View

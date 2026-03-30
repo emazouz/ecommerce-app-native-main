@@ -1061,7 +1061,7 @@ export const dummyUser = {
     ],
     clerkId: "user_396E235",
     role: "admin",
-    publicMetadata: {
+    unsafeMetadata: {
         role: "admin",
     },
 };

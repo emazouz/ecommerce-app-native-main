@@ -133,6 +133,7 @@ export const getUserOrders = async (req: Request, res: Response) => {
     const [total, orders] = await Promise.all([
       Order.countDocuments(query),
       Order.find(query)
+        .populate("items.product", "name images")
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -146,6 +147,7 @@ export const getUserOrders = async (req: Request, res: Response) => {
       total,
     });
   } catch (error: any) {
+    console.error("getUserOrders error:", error);
     return sendError(res, 500, error.message);
   }
 };
@@ -221,7 +223,6 @@ export const getAllOrders = async (req: Request, res: Response) => {
     const page = safeInt(req.query.page, 1);
     const limit = safeInt(req.query.limit, 10);
     const { status } = req.query;
-
     const query: any = {};
     if (status) query.orderStatus = status;
 

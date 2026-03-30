@@ -15,11 +15,12 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Image } from "expo-image";
-import { BANNERS, dummyProducts } from "@/assets/assets";
-import { CATEGORIES } from "@/assets/constants";
-import { Product } from "@/assets/constants/types";
+import { BANNERS } from "@/assets/assets";
+import { CATEGORIES } from "@/constants";
+import { Product } from "@/constants/types";
 import { useRouter } from "expo-router";
 import ProductCard from "../components/product-card";
+import api from "@/constants/api";
 
 const BANNER_HEIGHT = 192;
 const PADDING = 32;
@@ -64,8 +65,16 @@ export default function Index() {
   const [loading, setLoading] = useState(true);
 
   const fetchProducts = async () => {
-    setProducts(dummyProducts);
-    setLoading(false);
+    try {
+      const response = await api.get("/products");
+      if (response.data?.success) {
+        setProducts(response.data.data);
+      }
+    } catch (error: any) {
+      console.error("Failed to fetch products:", error?.response?.data || error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -98,7 +107,11 @@ export default function Index() {
               <BannerSlide key={banner.id} item={banner} width={bannerWidth} />
             ))}
           </ScrollView>
-          <PaginationDots total={BANNERS.length} activeIndex={activeIndex} className="mt-3" />
+          <PaginationDots
+            total={BANNERS.length}
+            activeIndex={activeIndex}
+            className="mt-3"
+          />
         </View>
 
         {/* Categories */}

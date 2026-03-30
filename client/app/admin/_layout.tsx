@@ -2,7 +2,7 @@ import { Tabs, useRouter } from "expo-router";
 import { useEffect, useCallback } from "react";
 import { Pressable, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { dummyUser } from "@/assets/assets";
+import { useUser } from "@clerk/expo";
 
 const TAB_SCREENS = [
   { name: "index", title: "Dashboard", icon: "grid-outline" as const },
@@ -11,11 +11,11 @@ const TAB_SCREENS = [
 ] as const;
 
 export default function AdminLayout() {
-  const user = dummyUser;
+  const {user} = useUser();
   const router = useRouter();
 
   useEffect(() => {
-    if (!user || user.publicMetadata?.role !== "admin") {
+    if (!user || user.unsafeMetadata?.role !== "admin") {
       router.replace("/(taps)" as any);
     }
   }, [user, router]);
@@ -24,7 +24,7 @@ export default function AdminLayout() {
     router.replace("/(taps)" as any);
   }, [router]);
 
-  if (!user || user.publicMetadata?.role !== "admin") return null;
+  if (!user || user.unsafeMetadata?.role !== "admin") return null;
 
   return (
     <Tabs

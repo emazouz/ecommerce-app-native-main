@@ -1,10 +1,11 @@
 import React from "react";
-import { COLORS } from "@/assets/constants";
-import { HeaderProps } from "@/assets/constants/types";
+import { COLORS } from "@/constants";
+import { HeaderProps } from "@/constants/types";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Text, Pressable, View } from "react-native";
 import { Image } from "expo-image";
+import { useCart } from "@/context/cart-context";
 
 const LOGO_STYLE = { width: 100, height: 40 } as const;
 
@@ -17,7 +18,7 @@ function Header({
   showSearch,
 }: HeaderProps) {
   const router = useRouter();
-
+  const { itemCount } = useCart();
   return (
     <View className="flex-row justify-between items-center px-4 py-3">
       {/* Left side */}
@@ -68,7 +69,7 @@ function Header({
           >
             <Ionicons name="bag-outline" size={24} color={COLORS.primary} />
             <View className="absolute -top-0.5 -right-0.5 rounded-full w-4 h-4 items-center justify-center bg-accent">
-              <Text className="text-white text-xs font-bold">3</Text>
+              <Text className="text-white text-xs font-bold">{itemCount}</Text>
             </View>
           </Pressable>
         )}

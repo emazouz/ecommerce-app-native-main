@@ -14,13 +14,16 @@ export const requireAuth = async (
 ) => {
   try {
     const { userId } = getAuth(req);
-
     if (!userId) {
+      console.error(
+        "Auth Error: Authentication required. No userId found by getAuth.",
+      );
       return sendError(res, 401, "Authentication required");
     }
 
     const user = await User.findOne({ clerkId: userId }).lean();
     if (!user) {
+      console.error(`Auth Error: User not found in DB for clerkId: ${userId}`);
       return sendError(res, 401, "User not found");
     }
 
@@ -28,6 +31,7 @@ export const requireAuth = async (
     req.user = user;
     next();
   } catch (error: any) {
+    console.error("Auth Error:", error);
     return sendError(res, 401, "Authentication failed");
   }
 };

@@ -10,6 +10,7 @@ import orderRouter from "./routes/order-routes.js";
 import addressRouter from "./routes/address-routes.js";
 import adminRouter from "./routes/admin-routes.js";
 import { sendSuccess } from "./helpers/response.js";
+import { seedProducts } from "./scripts/seedProducts.js";
 
 // Connect to database
 connectDB();
@@ -37,6 +38,8 @@ app.use("/api/cart", cartRouter);
 app.use("/api/orders", orderRouter);
 app.use("/api/addresses", addressRouter);
 app.use("/api/admin", adminRouter);
+
+// await seedProducts(process.env.MONGODB_URI!);
 
 // Only start the listener in local dev — Vercel manages its own listener
 const port = process.env.PORT || 3000;

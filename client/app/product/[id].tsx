@@ -6,17 +6,20 @@ import {
   ScrollView,
   Dimensions,
   ViewToken,
+  ActivityIndicator,
 } from "react-native";
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCart } from "@/context/cart-context";
 import { useWishlist } from "@/context/wishlist-context";
-import { dummyProducts } from "@/assets/assets";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import PaginationDots from "../components/pagination-dots";
 import Toast from "react-native-toast-message";
+import api from "@/constants/api";
+import { Product } from "@/constants/types";
+import { COLORS } from "@/constants";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const IMAGE_HEIGHT = 420;
@@ -30,10 +33,28 @@ export default function ProductDetails() {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
 
-  const product = useMemo(
-    () => dummyProducts.find((p) => p._id === id) ?? null,
-    [id],
-  );
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchProductDetails = async () => {
+      try {
+        setLoading(true);
+        const response = await api.get(`/products/${id}`);
+        if (response.data?.success) {
+          setProduct(response.data.data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch product details:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (id) {
+      fetchProductDetails();
+    }
+  }, [id]);
 
   const isLiked = isInWishlist(id);
 
@@ -62,7 +83,15 @@ export default function ProductDetails() {
     addToCart(product, selectedSize);
   }, [selectedSize, product, addToCart]);
 
-  // ─── Not Found ───────────────────────────────────────────────────────
+  // ─── Loading / Not Found ─────────────────────────────────────────────
+  if (loading) {
+    return (
+      <SafeAreaView className="flex-1 justify-center items-center bg-white">
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </SafeAreaView>
+    );
+  }
+
   if (!product) {
     return (
       <SafeAreaView className="flex-1 justify-center items-center bg-white">
@@ -70,6 +99,9 @@ export default function ProductDetails() {
         <Text className="text-lg font-semibold text-secondary mt-3">
           Product not found
         </Text>
+        <Pressable className="mt-5 px-6 py-3 bg-primary rounded-full" onPress={() => router.back()}>
+          <Text className="text-white font-bold">Go Back</Text>
+        </Pressable>
       </SafeAreaView>
     );
   }
@@ -148,10 +180,10 @@ export default function ProductDetails() {
             <View className="flex-row items-center mt-1">
               <Ionicons name="star" size={14} color="#FFD700" />
               <Text className="text-sm font-bold ml-1 text-primary">
-                {product.ratings.average.toFixed(1)}
+                {Number(product.ratings?.average || 0).toFixed(1)}
               </Text>
               <Text className="text-xs text-secondary ml-1">
-                ({product.ratings.count})
+                ({product.ratings?.count || 0})
               </Text>
             </View>
           </View>
@@ -159,11 +191,11 @@ export default function ProductDetails() {
           {/* Price */}
           <View className="flex-row items-center mb-6">
             <Text className="text-2xl font-bold text-primary">
-              ${product.price.toFixed(2)}
+              ${Number(product.price || 0).toFixed(2)}
             </Text>
             {hasDiscount && (
               <Text className="text-base text-secondary line-through ml-3">
-                ${product.comparePrice!.toFixed(2)}
+                ${Number(product.comparePrice || 0).toFixed(2)}
               </Text>
             )}
           </View>

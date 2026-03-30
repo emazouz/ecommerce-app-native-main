@@ -1,8 +1,8 @@
 import { Pressable, Text, View } from "react-native";
 import React from "react";
-import { CategoryItemProps } from "@/assets/constants/types";
+import { CategoryItemProps } from "@/constants/types";
 import { Ionicons } from "@expo/vector-icons";
-import { COLORS } from "@/assets/constants";
+import { COLORS } from "@/constants";
 
 export default function CategoryItem({
   item,

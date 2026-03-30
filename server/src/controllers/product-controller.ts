@@ -11,7 +11,12 @@ export const getProducts = async (req: Request, res: Response) => {
   try {
     const page = safeInt(req.query.page, 1);
     const limit = safeInt(req.query.limit, 10);
-    const query = { isActive: true };
+    const { search } = req.query;
+
+    const query: any = { isActive: true };
+    if (search) {
+      query.name = { $regex: search as string, $options: "i" };
+    }
 
     // Run count and find in parallel for speed
     const [total, products] = await Promise.all([
@@ -63,14 +68,21 @@ export const createProduct = async (req: Request, res: Response) => {
     const images = await uploadImages(files);
     const sizes = parseCSV(req.body.sizes);
 
-    const { name, description, price, comparePrice, category, stock, isFeatured } =
-      req.body;
+    const {
+      name,
+      description,
+      price,
+      comparePrice,
+      category,
+      stock,
+      isFeatured,
+    } = req.body;
 
     const product = await Product.create({
       name,
       description,
       price,
-      comparePrice,
+      comparePrice: 120,
       category,
       stock,
       isFeatured,

@@ -1,4 +1,4 @@
-import { ProductCardProps } from "@/assets/constants/types";
+import { ProductCardProps } from "@/constants/types";
 import { useWishlist } from "@/context/wishlist-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Link } from "expo-router";

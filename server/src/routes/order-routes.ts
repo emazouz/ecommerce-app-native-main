@@ -17,11 +17,12 @@ orderRouter.use(requireAuth);
 // User routes
 orderRouter.post("/", createOrder);
 orderRouter.get("/", getUserOrders);
-orderRouter.get("/:id", getOrder);
-orderRouter.put("/:id/cancel", cancelOrder);
-
-// Admin routes
+// Admin routes (MUST be defined before /:id routes)
 orderRouter.get("/admin", requireAdmin, getAllOrders);
 orderRouter.put("/admin/:id/status", requireAdmin, updateOrderStatus);
+
+// User explicit item routes
+orderRouter.get("/:id", getOrder);
+orderRouter.put("/:id/cancel", cancelOrder);
 
 export default orderRouter;

@@ -5,7 +5,7 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import Header from "../components/main-header";
-import { PROFILE_MENU } from "@/assets/constants";
+import { PROFILE_MENU } from "@/constants";
 import { useUser, useAuth } from "@clerk/expo";
 
 const AVATAR_SIZE = 100;
@@ -22,7 +22,9 @@ export default function Profile() {
     const last = user.lastName ?? "";
     const full = `${first} ${last}`.trim();
     // Fall back to username or email if name fields are empty
-    return full || user.username || user.primaryEmailAddress?.emailAddress || "User";
+    return (
+      full || user.username || user.primaryEmailAddress?.emailAddress || "User"
+    );
   }, [user]);
 
   const displayEmail = useMemo(() => {
@@ -32,7 +34,7 @@ export default function Profile() {
   }, [user]);
 
   const avatarUrl = user?.imageUrl;
-  const isAdmin = (user?.publicMetadata as { role?: string })?.role === "admin";
+  const isAdmin = user?.unsafeMetadata?.role === "admin";
 
   const handleLogout = useCallback(async () => {
     await signOut();
@@ -159,4 +161,3 @@ export default function Profile() {
     </SafeAreaView>
   );
 }
-

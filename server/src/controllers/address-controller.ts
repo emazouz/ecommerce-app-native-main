@@ -140,6 +140,7 @@ export const deleteAddress = async (req: Request, res: Response) => {
 // @desc    Set address as default
 // @route   PUT /api/addresses/:id/default
 // @access  Private
+
 export const setDefaultAddress = async (req: Request, res: Response) => {
   try {
     // Unset all defaults for this user

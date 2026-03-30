@@ -35,6 +35,7 @@ export const getDashboardStats = async (_req: Request, res: Response) => {
       { $group: { _id: "$orderStatus", count: { $sum: 1 } } },
     ]);
 
+
     return sendSuccess(res, 200, "Dashboard stats fetched", {
       totalUsers,
       totalProducts,
