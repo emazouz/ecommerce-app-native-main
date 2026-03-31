@@ -1,13 +1,21 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useMemo } from "react";
-import { ScrollView, Text, View, Pressable } from "react-native";
+import React, { useMemo, useState, useEffect } from "react";
+import {
+  ScrollView,
+  Text,
+  View,
+  Pressable,
+  ActivityIndicator,
+} from "react-native";
 import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
-import type { Order, Product } from "@/assets/constants/types";
-import { dummyOrders } from "@/assets/assets";
-import { COLORS } from "@/assets/constants";
+import type { Order, Product } from "@/constants/types";
+import { COLORS } from "@/constants";
 import Header from "../components/main-header";
+import { useAuth } from "@clerk/expo";
+import Toast from "react-native-toast-message";
+import api from "@/constants/api";
 
 const THUMB = 56;
 
@@ -30,11 +38,37 @@ function paymentColor(status: string) {
 export default function OrderDetails() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
+  const { getToken } = useAuth();
 
-  const order = useMemo(
-    () => dummyOrders.find((o) => o._id === id) as Order | undefined,
-    [id],
-  );
+  const [order, setOrder] = useState<Order | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchOrder = async () => {
+      try {
+        const token = await getToken();
+        if (!token) return;
+        const response = await api.get(`/orders/${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.data?.success) {
+          Toast.show({
+            type: "error",
+            text1: "Error",
+            text2: "Order not found",
+          });
+          return;
+        }
+        setOrder(response.data.data);
+      } catch (error: any) {
+        console.error("Failed to fetch order details:", error?.response?.data || error.message);
+        Toast.show({ type: "error", text1: "Error", text2: error?.response?.data?.message || "Failed to load order details" });
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (id) fetchOrder();
+  }, [id, getToken]);
 
   const cancelled = order?.orderStatus === "cancelled";
   const addr = order?.shippingAddress;
@@ -52,6 +86,17 @@ export default function OrderDetails() {
       })),
     [order, cancelled],
   );
+
+  if (loading) {
+    return (
+      <SafeAreaView
+        className="flex-1 bg-surface justify-center items-center"
+        edges={["top"]}
+      >
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </SafeAreaView>
+    );
+  }
 
   if (!order) {
     return (
@@ -113,9 +158,7 @@ export default function OrderDetails() {
                   <View className="pb-5">
                     <Text
                       className={`text-sm ${
-                        step.done
-                          ? "font-bold text-primary"
-                          : "text-gray-400"
+                        step.done ? "font-bold text-primary" : "text-gray-400"
                       }`}
                     >
                       {step.label}
@@ -176,7 +219,7 @@ export default function OrderDetails() {
                   </Text>
                 </View>
                 <Text className="text-sm font-bold text-primary">
-                  ${item.price.toFixed(2)}
+                  ${Number(item.price || 0).toFixed(2)}
                 </Text>
               </View>
             );
@@ -220,14 +263,20 @@ export default function OrderDetails() {
             valueClass={`capitalize ${paymentColor(order.paymentStatus)}`}
           />
           <View className="h-px bg-gray-100 my-2" />
-          <Row label="Subtotal" value={`$${order.subtotal.toFixed(2)}`} />
-          <Row label="Shipping" value={`$${order.shippingCost.toFixed(2)}`} />
-          <Row label="Tax" value={`$${order.tax.toFixed(2)}`} />
+          <Row
+            label="Subtotal"
+            value={`$${Number(order.subtotal || 0).toFixed(2)}`}
+          />
+          <Row
+            label="Shipping"
+            value={`$${Number(order.shippingCost || 0).toFixed(2)}`}
+          />
+          <Row label="Tax" value={`$${Number(order.tax || 0).toFixed(2)}`} />
           <View className="h-px bg-gray-100 my-2" />
           <View className="flex-row justify-between">
             <Text className="text-base font-bold text-primary">Total</Text>
             <Text className="text-base font-bold text-primary">
-              ${order.totalAmount.toFixed(2)}
+              ${Number(order.totalAmount || 0).toFixed(2)}
             </Text>
           </View>
         </Card>

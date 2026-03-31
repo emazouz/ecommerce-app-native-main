@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   ScrollView,
   Text,
@@ -15,43 +15,70 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import Toast from "react-native-toast-message";
-import { COLORS, CATEGORIES } from "@/assets/constants";
+import { COLORS, CATEGORIES } from "@/constants";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import { dummyProducts } from "@/assets/assets";
-import type { Product } from "@/assets/constants/types";
+import type { Product } from "@/constants/types";
+import { useAuth } from "@clerk/expo";
+import api from "@/constants/api";
 
 export default function EditProduct() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
+  const { getToken } = useAuth();
 
-  // Find product synchronously — no loading state needed for dummy data
-  const product = useMemo(
-    () => dummyProducts.find((p) => p._id === id) as Product | undefined,
-    [id],
-  );
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const [form, setForm] = useState(() => {
-    if (!product) return { name: "", description: "", price: "", stock: "", category: "", sizes: "", isFeatured: false };
-    const cat = typeof product.category === "object" ? product.category.name : product.category;
-    const szs = Array.isArray(product.sizes) ? product.sizes.join(", ") : product.sizes ?? "";
-    return {
-      name: product.name,
-      description: product.description ?? "",
-      price: String(product.price),
-      stock: String(product.stock),
-      category: cat,
-      sizes: szs,
-      isFeatured: product.isFeatured,
-    };
+  const [form, setForm] = useState({
+    name: "",
+    description: "",
+    price: "",
+    stock: "",
+    category: "",
+    sizes: "",
+    isFeatured: false,
   });
 
-  const [existingImages, setExistingImages] = useState<string[]>(
-    () => product?.images ?? [],
-  );
+  const [existingImages, setExistingImages] = useState<string[]>([]);
   const [newImages, setNewImages] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+
+  useEffect(() => {
+    const fetchProduct = async () => {
+      try {
+        const response = await api.get(`/products/${id}`);
+        if (response.data?.success) {
+          const p = response.data.data;
+          setProduct(p);
+          
+          const cat = typeof p.category === "object" ? p.category.name : p.category;
+          const szs = Array.isArray(p.sizes) ? p.sizes.join(", ") : (p.sizes ?? "");
+          
+          setForm({
+            name: p.name,
+            description: p.description ?? "",
+            price: String(p.price),
+            stock: String(p.stock),
+            category: cat,
+            sizes: szs,
+            isFeatured: p.isFeatured,
+          });
+          setExistingImages(p.images ?? []);
+        } else {
+          Toast.show({ type: "error", text1: "Error", text2: "Product not found" });
+          router.back();
+        }
+      } catch (err) {
+        console.error("Failed to fetch product", err);
+        Toast.show({ type: "error", text1: "Error", text2: "Network error" });
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (id) fetchProduct();
+  }, [id, router]);
 
   const totalImages = existingImages.length + newImages.length;
 
@@ -71,10 +98,7 @@ export default function EditProduct() {
       quality: 0.8,
     });
     if (!result.canceled) {
-      setNewImages((prev) => [
-        ...prev,
-        ...result.assets.map((a) => a.uri),
-      ]);
+      setNewImages((prev) => [...prev, ...result.assets.map((a) => a.uri)]);
     }
   }, [totalImages]);
 
@@ -103,11 +127,18 @@ export default function EditProduct() {
 
     try {
       setSubmitting(true);
+      const token = await getToken();
+      if (!token) {
+        Toast.show({ type: "error", text1: "Authentication Error", text2: "Please log in again" });
+        router.replace("/sign-in");
+        return;
+      }
+
       const formData = new FormData();
       formData.append("name", form.name);
       formData.append("description", form.description);
       formData.append("price", form.price);
-      formData.append("stock", form.stock);
+      formData.append("stock", form.stock || "0");
       formData.append("category", form.category);
       formData.append("isFeatured", String(form.isFeatured));
       formData.append("sizes", form.sizes);
@@ -120,17 +151,48 @@ export default function EditProduct() {
           const blob = await (await fetch(uri)).blob();
           formData.append(
             "images",
+            // @ts-ignore: File is web API
             new File([blob], filename, { type: "image/jpeg" }),
           );
         } else {
-          formData.append(
-            "images",
-            { uri, name: filename, type: "image/jpeg" } as any,
-          );
+          formData.append("images", {
+            uri,
+            name: filename,
+            type: "image/jpeg",
+          } as any);
         }
       }
+
+      // Use native fetch to bypass Axios FormData limitations in React Native
+      const url = `${api.defaults.baseURL}/products/${id}`;
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          // automatically sets Content-Type for FormData boundary
+        },
+        body: formData,
+      });
+
+      const responseData = await res.json();
+
+      if (!responseData.success) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: responseData.message || "Failed to update product",
+        });
+        return;
+      }
+
+      Toast.show({
+        type: "success",
+        text1: "Updated",
+        text2: "Product updated successfully",
+      });
       router.back();
     } catch (error: any) {
+      console.error(error);
       Toast.show({
         type: "error",
         text1: "Failed to Update",
@@ -139,7 +201,16 @@ export default function EditProduct() {
     } finally {
       setSubmitting(false);
     }
-  }, [form, existingImages, newImages, router]);
+  }, [form, existingImages, newImages, router, id, getToken]);
+
+  // Loading Product state
+  if (loading) {
+    return (
+      <View className="flex-1 bg-surface justify-center items-center">
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
 
   // Product not found
   if (!product) {

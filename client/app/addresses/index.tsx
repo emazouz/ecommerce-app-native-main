@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useEffect } from "react";
 import {
   FlatList,
   Text,
@@ -12,12 +12,15 @@ import {
   Platform,
   ScrollView,
   useWindowDimensions,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../components/main-header";
-import { COLORS } from "@/assets/constants";
-import type { Address } from "@/assets/constants/types";
-import { dummyAddress } from "@/assets/assets";
+import { COLORS } from "@/constants";
+import type { Address } from "@/constants/types";
+import api from "@/constants/api";
+import { useAuth } from "@clerk/expo";
+import Toast from "react-native-toast-message";
 
 const ADDRESS_TYPES = ["Home", "Work", "Other"] as const;
 
@@ -38,7 +41,10 @@ const INITIAL_FORM = {
 };
 
 export default function Addresses() {
-  const addresses = useMemo(() => dummyAddress as Address[], []);
+  const { getToken } = useAuth();
+  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const { height: screenHeight } = useWindowDimensions();
 
   const [modalVisible, setModalVisible] = useState(false);
@@ -46,6 +52,30 @@ export default function Addresses() {
   const [form, setForm] = useState(INITIAL_FORM);
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  const fetchAddresses = useCallback(async () => {
+    try {
+      setLoading(true);
+      const token = await getToken();
+      if (!token) return;
+
+      const response = await api.get("/addresses", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      // Fallback handlers if backend wraps data differently
+      setAddresses(response.data?.data || []);
+    } catch (error) {
+      console.error("Failed to fetch addresses:", error);
+    } finally {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    fetchAddresses();
+  }, [fetchAddresses]);
 
   const updateField = useCallback(
     (field: string, value: string | boolean) =>
@@ -79,14 +109,72 @@ export default function Addresses() {
     setModalVisible(true);
   }, []);
 
-  const handleSave = useCallback(() => {
-    setModalVisible(false);
-    resetForm();
-  }, [resetForm]);
+  const handleSave = useCallback(async () => {
+    try {
+      setSubmitting(true);
+      const token = await getToken();
+      if (!token) return;
 
-  const handleDelete = useCallback((id: string) => {
-    // Implement delete logic
-  }, []);
+      const payload = {
+        type: form.type,
+        street: form.street,
+        city: form.city,
+        state: form.state,
+        zipCode: form.zipCode,
+        country: form.country,
+        isDefault: form.isDefault,
+      };
+
+      if (isEditing && editingId) {
+        await api.put(`/addresses/${editingId}`, payload, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        Toast.show({ type: "success", text1: "Success", text2: "Address updated" });
+      } else {
+        await api.post("/addresses", payload, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        Toast.show({ type: "success", text1: "Success", text2: "Address added" });
+      }
+
+      setModalVisible(false);
+      resetForm();
+      fetchAddresses();
+    } catch (error: any) {
+      Toast.show({ type: "error", text1: "Error", text2: error.response?.data?.message || "Failed to save address" });
+    } finally {
+      setSubmitting(false);
+    }
+  }, [form, isEditing, editingId, getToken, fetchAddresses, resetForm]);
+
+  const handleDelete = useCallback(async (id: string) => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+      await api.delete(`/addresses/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      Toast.show({ type: "success", text1: "Success", text2: "Address deleted" });
+      fetchAddresses();
+    } catch (error: any) {
+      Toast.show({ type: "error", text1: "Error", text2: error.response?.data?.message || "Failed to delete address" });
+    }
+  }, [getToken, fetchAddresses]);
+
+  const confirmDelete = useCallback((id: string) => {
+    Alert.alert(
+      "Delete Address",
+      "Are you sure you want to delete this address?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete", 
+          style: "destructive", 
+          onPress: () => handleDelete(id)
+        }
+      ]
+    );
+  }, [handleDelete]);
 
   /* ── Address Card ── */
   const renderItem = useCallback(
@@ -120,7 +208,7 @@ export default function Addresses() {
               <Ionicons name="pencil-outline" size={16} color="#888" />
             </Pressable>
             <Pressable
-              onPress={() => handleDelete(item._id)}
+              onPress={() => confirmDelete(item._id)}
               hitSlop={10}
               className="w-9 h-9 rounded-full bg-red-50 items-center justify-center"
             >
@@ -137,7 +225,7 @@ export default function Addresses() {
         </Text>
       </View>
     ),
-    [handleEdit, handleDelete],
+    [handleEdit, confirmDelete],
   );
 
   /* ── Add Button Footer ── */
@@ -167,20 +255,33 @@ export default function Addresses() {
         data={addresses}
         keyExtractor={(item) => item._id}
         renderItem={renderItem}
-        contentContainerStyle={{ padding: 16 }}
+        contentContainerStyle={{ padding: 16, marginBottom: 100, flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <View className="flex-1 justify-center items-center mt-20">
-            <Ionicons name="location-outline" size={48} color="#ccc" />
-            <Text className="text-center text-secondary mt-3 text-base">
-              No addresses found
-            </Text>
-            <Text className="text-center text-secondary mt-1 text-sm">
-              Add a shipping address to get started
-            </Text>
-          </View>
+          loading ? (
+            <View className="flex-1 justify-center items-center">
+              <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+          ) : (
+            <View className="flex-1 justify-center items-center mt-20">
+              <Ionicons name="location-outline" size={64} color="#ddd" />
+              <Text className="text-center font-bold text-primary mt-4 text-lg">
+                No Addresses Yet
+              </Text>
+              <Text className="text-center text-secondary mt-2 text-sm max-w-[80%] mb-8">
+                Add a new shipping address for your orders and deliveries.
+              </Text>
+              <Pressable
+                onPress={openAddModal}
+                className="bg-primary px-8 py-3.5 rounded-full flex-row items-center active:opacity-90"
+              >
+                <Ionicons name="add" size={20} color="white" style={{ marginRight: 6 }} />
+                <Text className="text-white font-bold text-sm">Add First Address</Text>
+              </Pressable>
+            </View>
+          )
         }
-        ListFooterComponent={ListFooter}
+        ListFooterComponent={addresses.length > 0 && !loading ? ListFooter : null}
       />
 
       {/* ── Add / Edit Modal ── */}

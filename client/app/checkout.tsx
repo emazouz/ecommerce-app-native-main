@@ -5,20 +5,20 @@ import {
   Pressable,
   ActivityIndicator,
 } from "react-native";
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useCart } from "@/context/cart-context";
 import { useRouter } from "expo-router";
-import { Address } from "@/assets/constants/types";
-import { dummyAddress } from "@/assets/assets";
+import { Address } from "@/constants/types";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "./components/main-header";
 import Toast from "react-native-toast-message";
-import { COLORS } from "@/assets/constants";
+import { COLORS } from "@/constants";
+import { useAuth } from "@clerk/expo";
+import api from "@/constants/api";
 
-const SHIPPING = 2.0;
-const TAX_RATE = 0;
+const TAX_RATE = 0.05;
 
 type PaymentMethod = "cod" | "card";
 
@@ -43,30 +43,70 @@ const PAYMENT_OPTIONS: {
 ];
 
 export default function Checkout() {
-  const { cartItems, cartTotal } = useCart();
+  const { cartItems, cartTotal, clearCart } = useCart();
+  const { getToken } = useAuth();
   const router = useRouter();
 
-  // Address — synchronous dummy data, no loading state needed
-  const initialAddress = useMemo(() => {
-    const list = dummyAddress as Address[];
-    return list.find((a) => a.isDefault) ?? list[0] ?? null;
-  }, []);
-
-  const [selectedAddress, setSelectedAddress] = useState<Address | null>(
-    initialAddress,
-  );
+  const [selectedAddress, setSelectedAddress] = useState<Address | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
   const [loading, setLoading] = useState(false);
 
   // Derived totals
   const tax = useMemo(() => cartTotal * TAX_RATE, [cartTotal]);
-  const total = useMemo(() => cartTotal + SHIPPING + tax, [cartTotal, tax]);
+  const shippingCost = useMemo(() => (cartTotal >= 100 ? 0 : 10), [cartTotal]);
+  const total = useMemo(
+    () => cartTotal + shippingCost + tax,
+    [cartTotal, shippingCost, tax],
+  );
 
-  const handlePlaceOrder = useCallback(() => {
+  // fetch addresses
+  const fetchAddresses = useCallback(async () => {
+    try {
+      setLoading(true);
+      const token = await getToken();
+      if (!token) return;
+
+      const response = await api.get("/addresses", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const addresses = response.data?.data || [];
+
+      if (addresses.length > 0) {
+        const defaultAddress =
+          addresses.find((a: any) => a.isDefault) || addresses[0];
+        // Fallback handlers if backend wraps data differently
+        setSelectedAddress(defaultAddress);
+      } else {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "No addresses found",
+        });
+        router.push("/addresses" as any);
+      }
+    } catch (error) {
+      console.error("Failed to fetch addresses:", error);
+    } finally {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    fetchAddresses();
+  }, [fetchAddresses]);
+
+  const handlePlaceOrder = useCallback(async () => {
     if (!selectedAddress) {
-      Toast.show({ type: "error", text1: "Please select an address" });
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Please select a shipping address",
+      });
       return;
     }
+
     if (paymentMethod === "card") {
       Toast.show({
         type: "error",
@@ -75,12 +115,50 @@ export default function Checkout() {
       });
       return;
     }
-    setLoading(true);
-    setTimeout(() => {
+
+    try {
+      setLoading(true);
+      const token = await getToken();
+      if (!token) return;
+
+      const payload = {
+        shippingAddress: selectedAddress,
+        paymentMethod: paymentMethod === "cod" ? "cash" : "card",
+        note: "Order placed from mobile app",
+      };
+
+      const response = await api.post("/orders", payload, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.data.success) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: response.data.message,
+        });
+        return;
+      }
+
+      Toast.show({
+        type: "success",
+        text1: "Order Placed",
+        text2: "Your order was placed successfully!",
+      });
+
+      clearCart();
+      router.replace("/orders" as any);
+    } catch (error: any) {
+      
+      Toast.show({
+        type: "error",
+        text1: "Checkout Failed",
+        text2: error.response?.data?.message || "Something went wrong",
+      });
+    } finally {
       setLoading(false);
-      router.push("/orders/index");
-    }, 1500);
-  }, [selectedAddress, paymentMethod, router]);
+    }
+  }, [selectedAddress, paymentMethod, getToken, clearCart, router]);
 
   return (
     <SafeAreaView className="flex-1 bg-surface" edges={["top"]}>
@@ -204,7 +282,7 @@ export default function Checkout() {
         <SectionTitle text="Order Summary" />
         <View className="bg-white rounded-xl p-4">
           <Row label="Subtotal" value={`$${cartTotal.toFixed(2)}`} />
-          <Row label="Shipping" value={`$${SHIPPING.toFixed(2)}`} />
+          <Row label="Shipping" value={`$${shippingCost.toFixed(2)}`} />
           <Row label="Tax" value={`$${tax.toFixed(2)}`} />
           <View className="border-t border-gray-100 mt-2 pt-2 flex-row justify-between">
             <Text className="text-base font-bold text-primary">Total</Text>

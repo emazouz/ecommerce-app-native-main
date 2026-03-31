@@ -44,7 +44,6 @@ export default function SignIn() {
       await signIn.finalize({
         navigate: ({ session, decorateUrl }) => {
           if (session?.currentTask) {
-            console.log(session?.currentTask);
             return;
           }
           const url = decorateUrl("/");
@@ -70,7 +69,6 @@ export default function SignIn() {
       await signIn.finalize({
         navigate: ({ session, decorateUrl }) => {
           if (session?.currentTask) {
-            console.log(session?.currentTask);
             return;
           }
           const url = decorateUrl("/");

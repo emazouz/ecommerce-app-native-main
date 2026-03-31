@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useEffect } from "react";
 import {
   Text,
   View,
@@ -7,10 +7,12 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { getStatusColor } from "@/assets/constants";
-import { dummyAdminStats } from "@/assets/assets";
+import { getStatusColor } from "@/constants";
 import Header from "../components/main-header";
 import { SafeAreaView } from "react-native-safe-area-context";
+import api from "@/constants/api";
+import { useAuth } from "@clerk/expo";
+import Toast from "react-native-toast-message";
 
 type StatItem = {
   label: string;
@@ -21,9 +23,52 @@ type StatItem = {
 };
 
 export default function AdminDashboard() {
-  const stats = useMemo(() => dummyAdminStats, []);
+  // const stats = useMemo(() => dummyAdminStats, []);
+  const { getToken } = useAuth();
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    totalProducts: 0,
+    totalOrders: 0,
+    totalRevenue: 0,
+    recentOrders: [],
+    ordersByStatus: [],
+  } as any);
+
   const [refreshing, setRefreshing] = useState(false);
   const { width } = useWindowDimensions();
+
+  // fetch stats from API
+  const fetchStats = useCallback(async () => {
+    try {
+      const token = await getToken();
+
+      if (!token) {
+        Toast.show({
+          type: "error",
+          text1: "Authentication Error",
+          text2: "No auth token found. Please log in again.",
+        });
+        return;
+      }
+
+      const response = await api.get("/admin/stats", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (response.data.success) {
+        setStats(response.data.data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch admin stats:", error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [getToken]);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
 
   // Responsive: 2 columns with gap
   const cardWidth = (width - 16 * 2 - 12) / 2;
@@ -32,7 +77,7 @@ export default function AdminDashboard() {
     () => [
       {
         label: "Revenue",
-        value: `$${stats.totalRevenue.toFixed(2)}`,
+        value: `$${Number(stats.totalRevenue).toFixed(2) || "0.00"}`,
         icon: "wallet-outline",
         color: "#10B981",
         bg: "bg-emerald-50",
@@ -67,7 +112,7 @@ export default function AdminDashboard() {
     setTimeout(() => setRefreshing(false), 500);
   }, []);
 
-  const orders = stats.recentOrders as any[];
+  const orders = (stats.recentOrders || []) as any[];
 
   const renderOrder = useCallback(({ item: order }: { item: any }) => {
     const totalQty = order.items.reduce(

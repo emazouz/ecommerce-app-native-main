@@ -1,5 +1,5 @@
 import { dummyWishlist } from "@/assets/assets";
-import { Product, WishlistContextType } from "@/assets/constants/types";
+import { Product, WishlistContextType } from "@/constants/types";
 import {
   createContext,
   ReactNode,

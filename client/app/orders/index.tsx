@@ -1,19 +1,75 @@
 import { useRouter } from "expo-router";
-import React, { useMemo, useCallback } from "react";
-import { Text, Pressable, View, FlatList, ScrollView } from "react-native";
+import React, { useState, useCallback, useEffect } from "react";
+import {
+  Text,
+  Pressable,
+  View,
+  FlatList,
+  ScrollView,
+  ActivityIndicator,
+  RefreshControl,
+} from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getStatusColor } from "@/assets/constants";
-import type { Order } from "@/assets/constants/types";
-import { dummyOrders, formatDate } from "@/assets/assets";
+import { COLORS, getStatusColor } from "@/constants";
+import type { Order } from "@/constants/types";
+import { formatDate } from "@/assets/assets";
 import Header from "../components/main-header";
+import { useAuth } from "@clerk/expo";
+import Toast from "react-native-toast-message";
+import api from "@/constants/api";
 
 const THUMB = 48;
 
 export default function Orders() {
   const router = useRouter();
-  const orders = useMemo(() => dummyOrders as Order[], []);
+  const { getToken } = useAuth();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchOrders = useCallback(async () => {
+    try {
+      const token = await getToken();
+      if (!token) {
+        router.replace("/sign-in");
+        return;
+      }
+      
+      const response = await api.get("/orders", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.data?.success) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Failed to load orders",
+        });
+        return;
+      }
+      setOrders(response.data.data || []);
+    } catch (error: any) {
+      console.error("Failed to fetch user orders:", error?.response?.data || error.message);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: error?.response?.data?.message || "Failed to load orders",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [getToken, router]);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchOrders();
+    setRefreshing(false);
+  }, [fetchOrders]);
 
   const renderItem = useCallback(
     ({ item }: { item: Order }) => {
@@ -107,7 +163,7 @@ export default function Orders() {
               {totalQty} item{totalQty !== 1 ? "s" : ""}
             </Text>
             <Text className="text-base font-bold text-primary">
-              ${item.totalAmount.toFixed(2)}
+              ${Number(item.totalAmount || 0).toFixed(2)}
             </Text>
           </View>
         </Pressable>
@@ -124,16 +180,27 @@ export default function Orders() {
         data={orders}
         keyExtractor={(item) => item._id}
         renderItem={renderItem}
-        contentContainerStyle={{ padding: 16 }}
+        contentContainerStyle={{ padding: 16, flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <View className="flex-1 justify-center items-center mt-20">
-            <Ionicons name="receipt-outline" size={48} color="#ccc" />
-            <Text className="text-secondary mt-3 text-base">No orders yet</Text>
-            <Text className="text-secondary text-sm mt-1">
-              Your orders will appear here
-            </Text>
-          </View>
+          loading ? (
+            <View className="flex-1 justify-center items-center mt-20">
+              <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+          ) : (
+            <View className="flex-1 justify-center items-center mt-20">
+              <Ionicons name="receipt-outline" size={48} color="#ccc" />
+              <Text className="text-secondary mt-3 text-base">
+                No orders yet
+              </Text>
+              <Text className="text-secondary text-sm mt-1">
+                Your orders will appear here
+              </Text>
+            </View>
+          )
+        }
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       />
     </SafeAreaView>

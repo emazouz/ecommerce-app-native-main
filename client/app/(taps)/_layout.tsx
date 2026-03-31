@@ -1,7 +1,7 @@
 import React from "react";
 import { Tabs } from "expo-router";
 import { Feather, Ionicons } from "@expo/vector-icons";
-import { COLORS } from "@/assets/constants";
+import { COLORS } from "@/constants";
 import { useCart } from "@/context/cart-context";
 import { View } from "react-native";
 

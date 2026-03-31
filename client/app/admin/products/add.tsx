@@ -14,9 +14,12 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import Toast from "react-native-toast-message";
-import { COLORS, CATEGORIES } from "@/assets/constants";
+import { COLORS, CATEGORIES } from "@/constants";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { useAuth } from "@clerk/expo";
+import { useRouter } from "expo-router";
+import api from "@/constants/api";
 
 const INITIAL_FORM = {
   name: "",
@@ -29,6 +32,8 @@ const INITIAL_FORM = {
 };
 
 export default function AddProduct() {
+  const { getToken } = useAuth();
+  const router = useRouter();
   const [form, setForm] = useState(INITIAL_FORM);
   const [images, setImages] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -48,7 +53,9 @@ export default function AddProduct() {
       quality: 0.8,
     });
     if (!result.canceled) {
-      setImages(result.assets.map((a) => a.uri).slice(0, 5));
+      setImages((prev) =>
+        [...prev, ...result.assets.map((a) => a.uri)].slice(0, 5),
+      );
     }
   }, []);
 
@@ -56,7 +63,7 @@ export default function AddProduct() {
     setImages((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = async () => {
     if (!form.name || !form.price || !form.category || !form.sizes) {
       Toast.show({
         type: "error",
@@ -67,8 +74,85 @@ export default function AddProduct() {
     }
     setSubmitting(true);
     // Simulate submission
-    setTimeout(() => setSubmitting(false), 1500);
-  }, [form]);
+
+    try {
+      const token = await getToken();
+      if (!token) {
+        Toast.show({
+          type: "error",
+          text1: "Authentication Error",
+          text2: "Please log in again",
+        });
+        router.replace("/sign-in");
+        return;
+      }
+
+      // Format data
+      const formData = new FormData();
+
+      const fields = {
+        name: form.name,
+        description: form.description,
+        price: form.price,
+        stock: form.stock || "0",
+        category: form.category,
+        sizes: form.sizes,
+        isFeatured: String(form.isFeatured),
+      };
+
+      Object.entries(fields).forEach(([key, value]) => {
+        formData.append(key, value);
+      });
+
+      // images
+      for (const [index, uri] of images.entries()) {
+        const filename = `image_${index}.jpg`;
+        formData.append("images", {
+          uri,
+          name: filename,
+          type: "image/jpeg",
+        } as any);
+      }
+
+      // Use native fetch to bypass Axios FormData limitations in React Native
+      const url = api.defaults.baseURL + "/products";
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          // Do not set Content-Type here; fetch will automatically set it to multipart/form-data with the correct boundary
+        },
+        body: formData,
+      });
+
+      const responseData = await res.json();
+
+      if (!responseData.success) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: responseData.message || "Failed to add product",
+        });
+        return;
+      }
+
+      Toast.show({
+        type: "success",
+        text1: "Product Added",
+        text2: "Product added successfully",
+      });
+      router.replace("/admin/products");
+    } catch (error) {
+      console.error("Failed to add product:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to add product",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const selectCategory = useCallback((name: string) => {
     setForm((prev) => ({ ...prev, category: name }));
@@ -145,7 +229,7 @@ export default function AddProduct() {
 
           {/* Images */}
           <FieldLabel text="Product Images (max 5)" />
-          <Pressable onPress={pickImages} className="mb-4">
+          <View className="mb-4">
             {images.length > 0 ? (
               <ScrollView
                 horizontal
@@ -169,24 +253,26 @@ export default function AddProduct() {
                   </View>
                 ))}
                 {images.length < 5 && (
-                  <View className="w-[100px] h-[100px] rounded-xl bg-surface border border-dashed border-gray-300 items-center justify-center">
+                  <Pressable
+                    onPress={pickImages}
+                    className="w-[100px] h-[100px] rounded-xl bg-surface border border-dashed border-gray-300 items-center justify-center"
+                  >
                     <Ionicons name="add" size={24} color="#888" />
-                  </View>
+                  </Pressable>
                 )}
               </ScrollView>
             ) : (
-              <View className="w-full h-28 rounded-xl bg-surface justify-center items-center border-2 border-dashed border-gray-200">
-                <Ionicons
-                  name="cloud-upload-outline"
-                  size={28}
-                  color="#888"
-                />
+              <Pressable
+                onPress={pickImages}
+                className="w-full h-28 rounded-xl bg-surface justify-center items-center border-2 border-dashed border-gray-200"
+              >
+                <Ionicons name="cloud-upload-outline" size={28} color="#888" />
                 <Text className="text-secondary text-xs mt-2">
                   Tap to upload images
                 </Text>
-              </View>
+              </Pressable>
             )}
-          </Pressable>
+          </View>
 
           {/* Description */}
           <FieldLabel text="Description" />

@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useEffect } from "react";
 import {
   Text,
   Pressable,
@@ -10,27 +10,74 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
-import { dummyProducts } from "@/assets/assets";
-import type { Product } from "@/assets/constants/types";
+import type { Product } from "@/constants/types";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../components/main-header";
+import { useAuth } from "@clerk/expo";
+import Toast from "react-native-toast-message";
+import api from "@/constants/api";
 
 const THUMB_SIZE = 64;
+const limit = 999;
 
 export default function AdminProducts() {
+  const { getToken } = useAuth();
   const router = useRouter();
-  const initialProducts = useMemo(() => dummyProducts as Product[], []);
-  const [products, setProducts] = useState<Product[]>(initialProducts);
+  // const initialProducts = useMemo(() => dummyProducts as Product[], []);
+  const [products, setProducts] = useState<Product[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
-  const onRefresh = useCallback(() => {
+  const fetchProducts = useCallback(async () => {
+    try {
+      const token = await getToken();
+      if (!token) {
+        Toast.show({
+          type: "error",
+          text1: "Authentication Error",
+          text2: "Please log in again",
+        });
+        router.replace("/sign-in");
+        return;
+      }
+
+      const response = await api.get("/products", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        params: {
+          limit,
+        },
+      });
+
+      if (!response.data.success) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: response.data.message,
+        });
+        return;
+      }
+
+      setProducts(response.data.data || []);
+    } catch (error) {
+      console.error("Failed to fetch products:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to fetch products",
+      });
+    }
+  }, [getToken, router]);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
+
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    // Simulate refresh
-    setTimeout(() => {
-      setProducts(dummyProducts as Product[]);
-      setRefreshing(false);
-    }, 500);
-  }, []);
+    await fetchProducts();
+    setRefreshing(false);
+  }, [fetchProducts]);
 
   const deleteProduct = useCallback(
     (id: string) => {
@@ -42,13 +89,40 @@ export default function AdminProducts() {
           {
             text: "Delete",
             style: "destructive",
-            onPress: () =>
-              setProducts((prev) => prev.filter((p) => p._id !== id)),
+            onPress: async () => {
+              try {
+                const token = await getToken();
+                const response = await api.delete(`/products/${id}`, {
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+                if (response.data?.success) {
+                  setProducts((prev) => prev.filter((p) => p._id !== id));
+                  Toast.show({
+                    type: "success",
+                    text1: "Deleted",
+                    text2: "Product removed successfully",
+                  });
+                } else {
+                  Toast.show({
+                    type: "error",
+                    text1: "Error",
+                    text2: response.data?.message || "Failed to delete product",
+                  });
+                }
+              } catch (error) {
+                console.error("Failed to delete product:", error);
+                Toast.show({
+                  type: "error",
+                  text1: "Error",
+                  text2: "Failed to delete product",
+                });
+              }
+            },
           },
         ],
       );
     },
-    [],
+    [getToken],
   );
 
   const renderItem = useCallback(
@@ -56,12 +130,14 @@ export default function AdminProducts() {
       const categoryName =
         typeof item.category === "string"
           ? item.category
-          : item.category?.name ?? "Other";
+          : (item.category?.name ?? "Other");
 
       return (
         <View className="bg-white p-3 rounded-2xl mb-3 flex-row items-center shadow-sm">
           <Image
-            source={{ uri: item.images?.[0] ?? "https://via.placeholder.com/150" }}
+            source={{
+              uri: item.images?.[0] ?? "https://via.placeholder.com/150",
+            }}
             style={{ width: THUMB_SIZE, height: THUMB_SIZE, borderRadius: 12 }}
             contentFit="cover"
             transition={100}
