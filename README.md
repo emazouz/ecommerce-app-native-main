@@ -70,13 +70,13 @@ To run the application locally, you will need to start both the `client` and `se
 
 3. Set up environment variables:
 
-- Create a `.env` file in the `server` directory with the following variables:  
+- Create a `.env` file in the `server` directory with the following variables:
 
-+   ```  
--   MONGODB_URI=your_mongodb_connection_string  
--   CLERK_SECRET_KEY=your_clerk_secret_key  
-+   PORT=3000  
-+   ```  
+   ```env
+   MONGODB_URI=your_mongodb_connection_string
+   CLERK_SECRET_KEY=your_clerk_secret_key
+   PORT=3000
+   ```
 
 4. Start the development server:
 
